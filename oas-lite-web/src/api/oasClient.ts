@@ -77,7 +77,7 @@ export class OasClient {
   constructor(opts: OasClientOptions = {}) {
     const raw = opts.baseUrl
       ?? import.meta.env.VITE_OAS_BASE_URL
-      ?? 'http://127.0.0.1:22288'
+      ?? 'http://127.0.0.1:22267'
     // 去掉末尾斜杠，方便拼接
     this.baseUrl = raw.replace(/\/+$/, '')
     this.sink = opts.sink ?? noopSink
@@ -243,6 +243,8 @@ export class OasClient {
    * 每个字段独立处理，缺失字段会发出 warn 但不中断其他写入。
    *
    * 预设内容：
+   *   - Exploration.scheduler.enable         = true（加入调度器）
+   *   - Restart.scheduler.enable             = false（避免启动时只排 Restart）
    *   - exploration_config.exploration_level = '第二十八章'
    *   - exploration_config.user_status       = 'alone'（单人）
    *   - exploration_config.minions_cnt       = 30
@@ -260,52 +262,62 @@ export class OasClient {
     failed: number
     missing: string[]
   }> {
-    const TASK = 'Exploration'
-    const args = await this.getTaskArgs(scriptName, TASK)
-    if (!args) {
-      emit(this.sink, 'error', '应用预设失败：读取 args 失败')
-      return { success: 0, failed: 0, missing: [] }
+    const taskArgs = new Map<string, TaskArgs>()
+    const getArgs = async (task: string): Promise<TaskArgs | null> => {
+      const cached = taskArgs.get(task)
+      if (cached) return cached
+      const args = await this.getTaskArgs(scriptName, task)
+      if (args) taskArgs.set(task, args)
+      return args
     }
 
-    // 期望的目标值表 — 每条形如 [group, argument, value, type]
-    type Plan = [group: string, argument: string, value: unknown, type: OasArgType]
+    // 期望的目标值表 — 每条形如 [task, group, argument, value, type]
+    type Plan = [task: string, group: string, argument: string, value: unknown, type: OasArgType]
     const plan: Plan[] = [
-      ['exploration_config', 'exploration_level', '第二十八章', 'string'],
-      ['exploration_config', 'user_status',       'alone',     'string'],
-      ['exploration_config', 'minions_cnt',       30,           'integer'],
-      ['exploration_config', 'limit_time',        '00:30:00',   'time'],
-      ['exploration_config', 'auto_rotate',       '不',         'string'],
-      ['exploration_config', 'buff_gold_50_click',  false, 'boolean'],
-      ['exploration_config', 'buff_gold_100_click', false, 'boolean'],
-      ['exploration_config', 'buff_exp_50_click',   false, 'boolean'],
-      ['exploration_config', 'buff_exp_100_click',  false, 'boolean'],
-      ['scrolls',            'scrolls_enable',       false, 'boolean'],
-      ['switch_soul_config', 'enable',               false, 'boolean'],
-      ['switch_soul_config', 'enable_switch_by_name', false, 'boolean'],
+      ['Exploration', 'scheduler', 'enable', true, 'boolean'],
+      ['Restart', 'scheduler', 'enable', false, 'boolean'],
+      ['Exploration', 'exploration_config', 'exploration_level', '第二十八章', 'string'],
+      ['Exploration', 'exploration_config', 'user_status',       'alone',     'string'],
+      ['Exploration', 'exploration_config', 'minions_cnt',       30,           'integer'],
+      ['Exploration', 'exploration_config', 'limit_time',        '00:30:00',   'time'],
+      ['Exploration', 'exploration_config', 'auto_rotate',       '不',         'string'],
+      ['Exploration', 'exploration_config', 'buff_gold_50_click',  false, 'boolean'],
+      ['Exploration', 'exploration_config', 'buff_gold_100_click', false, 'boolean'],
+      ['Exploration', 'exploration_config', 'buff_exp_50_click',   false, 'boolean'],
+      ['Exploration', 'exploration_config', 'buff_exp_100_click',  false, 'boolean'],
+      ['Exploration', 'scrolls',            'scrolls_enable',       false, 'boolean'],
+      ['Exploration', 'switch_soul_config', 'enable',               false, 'boolean'],
+      ['Exploration', 'switch_soul_config', 'enable_switch_by_name', false, 'boolean'],
     ]
 
     let success = 0
     let failed = 0
     const missing: string[] = []
 
-    for (const [group, argument, value, type] of plan) {
+    for (const [task, group, argument, value, type] of plan) {
+      const args = await getArgs(task)
+      if (!args) {
+        emit(this.sink, 'error', `预设跳过：读取 ${task} 参数结构失败`)
+        failed++
+        continue
+      }
       const groupList = args[group]
       if (!groupList) {
         emit(this.sink, 'warn',
-          `预设跳过：未找到 group "${group}"。可用 group：[${Object.keys(args).join(', ')}]`)
-        missing.push(`${group}.${argument}`)
+          `预设跳过：${task} 未找到 group "${group}"。可用 group：[${Object.keys(args).join(', ')}]`)
+        missing.push(`${task}.${group}.${argument}`)
         continue
       }
       const found = groupList.find(a => a.name === argument)
       if (!found) {
         emit(this.sink, 'warn',
-          `预设跳过：group "${group}" 下未找到字段 "${argument}"。可用字段：[${groupList.map(a => a.name).join(', ')}]`)
-        missing.push(`${group}.${argument}`)
+          `预设跳过：${task}.${group} 下未找到字段 "${argument}"。可用字段：[${groupList.map(a => a.name).join(', ')}]`)
+        missing.push(`${task}.${group}.${argument}`)
         continue
       }
       emit(this.sink, 'info',
-        `[preset] writing ${group}.${argument} = ${String(value)} (type=${type})`)
-      const ok = await this.updateTaskArg(scriptName, TASK, group, argument, value, type)
+        `[preset] writing ${task}.${group}.${argument} = ${String(value)} (type=${type})`)
+      const ok = await this.updateTaskArg(scriptName, task, group, argument, value, type)
       if (ok) success++; else failed++
     }
 

@@ -47,6 +47,7 @@ AGENTS.md
 CLAUDE.md
 .codex/
 .claude/
+.conda/
 openspec/
 
 

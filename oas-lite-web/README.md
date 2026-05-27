@@ -35,13 +35,16 @@
 
 ### 1. 启动 OAS 后端
 
+请使用 Python 3.10 或 3.11。Python 3.12 可能会在安装 `zerorpc` / `gevent`
+等后端依赖时构建失败。
+
 在 OnmyojiAutoScript 根目录下：
 
 ```bash
 python server.py
 ```
 
-默认监听 `http://127.0.0.1:22288`（端口看 `deploy/config.yaml` 的 `WebuiPort`）。
+默认监听 `http://127.0.0.1:22267`（端口看 `deploy/config.yaml` 的 `WebuiPort`）。
 
 ### 2. 启动前端
 
@@ -66,7 +69,7 @@ npm run dev
 复制 `.env.example` 为 `.env.local`，按需修改：
 
 ```
-VITE_OAS_BASE_URL=http://127.0.0.1:22288
+VITE_OAS_BASE_URL=http://127.0.0.1:22267
 ```
 
 ## 排查：预设按钮点了没反应 / 报字段错误
