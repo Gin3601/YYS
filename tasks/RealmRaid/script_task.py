@@ -307,6 +307,15 @@ class ScriptTask(GeneralBattle, GameUi, SwitchSoul, RealmRaidAssets):
 
         if total == 0:
             self.reward_detect_click(True)
+            for _ in range(3):
+                time.sleep(0.5)
+                self.screenshot()
+                cu, res, total = self.O_NUMBER.ocr(self.device.image)
+                if total != 0:
+                    break
+            if total == 0:
+                logger.warning('Ticket OCR failed, keep running instead of treating it as no ticket')
+                return True
             # 增加出现聊天框遮挡，处理奖励之后，重新识别票数
             cu, res, total = self.O_NUMBER.ocr(self.device.image)
         if cu == 0 and cu + res == total:
@@ -564,4 +573,3 @@ if __name__ == "__main__":
     t = ScriptTask(config, device)
 
     t.run()
-

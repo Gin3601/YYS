@@ -3,6 +3,7 @@ import { getOasClient, type LogEvent } from './api/oasClient'
 import { useOasStatus } from './hooks/useOasStatus'
 import { Header } from './components/Header'
 import { ExplorationPresetCard } from './components/ExplorationPresetCard'
+import { RealmRaidPresetCard } from './components/RealmRaidPresetCard'
 import { ControlPanel } from './components/ControlPanel'
 import { LogPanel } from './components/LogPanel'
 
@@ -32,6 +33,8 @@ export function App() {
   const [presetRefreshTick, setPresetRefreshTick] = useState(0)
   const [wsReconnectKey, setWsReconnectKey] = useState(0)
   const [applyingPreset, setApplyingPreset] = useState(false)
+  const [activePresetLabel, setActivePresetLabel] = useState('探索28')
+  const [activePreset, setActivePreset] = useState<'exploration' | 'realmRaid'>('exploration')
 
   // 启动检测 + 自动重试。
   //
@@ -94,7 +97,22 @@ export function App() {
     setApplyingPreset(true)
     try {
       await client.applyExploration28Preset(currentConfig)
+      setActivePresetLabel('探索28')
+      setActivePreset('exploration')
       setPresetRefreshTick(t => t + 1) // 触发卡片重新读 args 展示新值
+    } finally {
+      setApplyingPreset(false)
+    }
+  }, [client, currentConfig])
+
+  const handleApplyRealmRaidPreset = useCallback(async () => {
+    if (!currentConfig) return
+    setApplyingPreset(true)
+    try {
+      await client.applyRealmRaidPreset(currentConfig)
+      setActivePresetLabel('个人突破')
+      setActivePreset('realmRaid')
+      setPresetRefreshTick(t => t + 1)
     } finally {
       setApplyingPreset(false)
     }
@@ -106,10 +124,16 @@ export function App() {
       pushLog({ ts: Date.now(), level: 'warn', message: '后端未连接，无法启动。' })
       return
     }
+    if (activePreset === 'realmRaid') {
+      await client.applyRealmRaidPreset(currentConfig)
+    } else {
+      await client.applyExploration28Preset(currentConfig)
+    }
+    setPresetRefreshTick(t => t + 1)
     await client.startScript(currentConfig)
     // 启动后用 WS 'get_state' 触发一次广播
     setWsReconnectKey(k => k + 1)
-  }, [client, currentConfig, backendOnline, pushLog])
+  }, [client, currentConfig, backendOnline, activePreset, pushLog])
 
   const handleStop = useCallback(async () => {
     if (!currentConfig) return
@@ -185,10 +209,18 @@ export function App() {
             onApplyPreset={handleApplyPreset}
             applying={applyingPreset}
           />
+          <RealmRaidPresetCard
+            client={client}
+            scriptName={currentConfig}
+            refreshTick={presetRefreshTick}
+            onApplyPreset={handleApplyRealmRaidPreset}
+            applying={applyingPreset}
+          />
           <ControlPanel
             scriptName={currentConfig}
             backendOnline={backendOnline}
             status={status}
+            startLabel={`启动${activePresetLabel}`}
             onStart={handleStart}
             onStop={handleStop}
             onRefresh={handleRefresh}

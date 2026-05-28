@@ -247,8 +247,8 @@ export class OasClient {
    *   - Restart.scheduler.enable             = false（避免启动时只排 Restart）
    *   - exploration_config.exploration_level = '第二十八章'
    *   - exploration_config.user_status       = 'alone'（单人）
-   *   - exploration_config.minions_cnt       = 30
-   *   - exploration_config.limit_time        = '00:30:00'（30 分钟）
+   *   - exploration_config.minions_cnt       = 50
+   *   - exploration_config.limit_time        = '00:50:00'（50 分钟）
    *   - exploration_config.auto_rotate       = '不'（不添加候补）
    *   - exploration_config.buff_*            = false（关闭加成稳定性优先）
    *   - scrolls.scrolls_enable               = false（关绘卷）
@@ -275,11 +275,13 @@ export class OasClient {
     type Plan = [task: string, group: string, argument: string, value: unknown, type: OasArgType]
     const plan: Plan[] = [
       ['Exploration', 'scheduler', 'enable', true, 'boolean'],
+      ['Exploration', 'scheduler', 'next_run', '2023-01-01 00:00:00', 'date_time'],
+      ['RealmRaid', 'scheduler', 'enable', false, 'boolean'],
       ['Restart', 'scheduler', 'enable', false, 'boolean'],
       ['Exploration', 'exploration_config', 'exploration_level', '第二十八章', 'string'],
       ['Exploration', 'exploration_config', 'user_status',       'alone',     'string'],
-      ['Exploration', 'exploration_config', 'minions_cnt',       30,           'integer'],
-      ['Exploration', 'exploration_config', 'limit_time',        '00:30:00',   'time'],
+      ['Exploration', 'exploration_config', 'minions_cnt',       50,           'integer'],
+      ['Exploration', 'exploration_config', 'limit_time',        '00:50:00',   'time'],
       ['Exploration', 'exploration_config', 'auto_rotate',       '不',         'string'],
       ['Exploration', 'exploration_config', 'buff_gold_50_click',  false, 'boolean'],
       ['Exploration', 'exploration_config', 'buff_gold_100_click', false, 'boolean'],
@@ -323,6 +325,87 @@ export class OasClient {
 
     emit(this.sink, success > 0 && failed === 0 ? 'success' : 'warn',
       `探索28 预设应用完成：成功 ${success}，失败 ${failed}，跳过 ${missing.length}`)
+    return { success, failed, missing }
+  }
+
+  /**
+   * 一键应用「个人突破」预设。
+   *
+   * 预设内容：
+   *   - RealmRaid.scheduler.enable           = true
+   *   - Exploration.scheduler.enable         = false
+   *   - Restart.scheduler.enable             = false
+   *   - raid_config.number_attack            = 30
+   *   - raid_config.number_base              = 0
+   *   - raid_config.exit_four                = true
+   *   - raid_config.order_attack             = '5 > 4 > 3 > 2 > 1 > 0'
+   *   - raid_config.three_refresh            = false
+   *   - raid_config.when_attack_fail         = 'Refresh'
+   *   - switch_soul_config.*                 = false（默认不切魂）
+   */
+  async applyRealmRaidPreset(scriptName: string): Promise<{
+    success: number
+    failed: number
+    missing: string[]
+  }> {
+    const taskArgs = new Map<string, TaskArgs>()
+    const getArgs = async (task: string): Promise<TaskArgs | null> => {
+      const cached = taskArgs.get(task)
+      if (cached) return cached
+      const args = await this.getTaskArgs(scriptName, task)
+      if (args) taskArgs.set(task, args)
+      return args
+    }
+
+    type Plan = [task: string, group: string, argument: string, value: unknown, type: OasArgType]
+    const plan: Plan[] = [
+      ['RealmRaid', 'scheduler', 'enable', true, 'boolean'],
+      ['RealmRaid', 'scheduler', 'next_run', '2023-01-01 00:00:00', 'date_time'],
+      ['Exploration', 'scheduler', 'enable', false, 'boolean'],
+      ['Restart', 'scheduler', 'enable', false, 'boolean'],
+      ['RealmRaid', 'raid_config', 'number_attack', 30, 'integer'],
+      ['RealmRaid', 'raid_config', 'number_base', 0, 'integer'],
+      ['RealmRaid', 'raid_config', 'exit_four', true, 'boolean'],
+      ['RealmRaid', 'raid_config', 'order_attack', '5 > 4 > 3 > 2 > 1 > 0', 'string'],
+      ['RealmRaid', 'raid_config', 'three_refresh', false, 'boolean'],
+      ['RealmRaid', 'raid_config', 'when_attack_fail', 'Refresh', 'string'],
+      ['RealmRaid', 'switch_soul_config', 'enable', false, 'boolean'],
+      ['RealmRaid', 'switch_soul_config', 'enable_switch_by_name', false, 'boolean'],
+    ]
+
+    let success = 0
+    let failed = 0
+    const missing: string[] = []
+
+    for (const [task, group, argument, value, type] of plan) {
+      const args = await getArgs(task)
+      if (!args) {
+        emit(this.sink, 'error', `预设跳过：读取 ${task} 参数结构失败`)
+        failed++
+        continue
+      }
+      const groupList = args[group]
+      if (!groupList) {
+        emit(this.sink, 'warn',
+          `预设跳过：${task} 未找到 group "${group}"。可用 group：[${Object.keys(args).join(', ')}]`)
+        missing.push(`${task}.${group}.${argument}`)
+        continue
+      }
+      const found = groupList.find(a => a.name === argument)
+      if (!found) {
+        emit(this.sink, 'warn',
+          `预设跳过：${task}.${group} 下未找到字段 "${argument}"。可用字段：[${groupList.map(a => a.name).join(', ')}]`)
+        missing.push(`${task}.${group}.${argument}`)
+        continue
+      }
+      emit(this.sink, 'info',
+        `[preset] writing ${task}.${group}.${argument} = ${String(value)} (type=${type})`)
+      const ok = await this.updateTaskArg(scriptName, task, group, argument, value, type)
+      if (ok) success++; else failed++
+    }
+
+    emit(this.sink, success > 0 && failed === 0 ? 'success' : 'warn',
+      `个人突破预设应用完成：成功 ${success}，失败 ${failed}，跳过 ${missing.length}`)
     return { success, failed, missing }
   }
 }

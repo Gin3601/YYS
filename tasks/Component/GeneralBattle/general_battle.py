@@ -83,7 +83,8 @@ class GeneralBattle(GeneralBuff, GeneralBattleAssets):
         :param config:
         :return:
         """
-        # 如果没有锁定队伍那么在点击准备后才退出的,退四的话就直接退出
+        # 如果没有锁定队伍那么在点击准备后才退出的。
+        # 退四场景也需要先点准备进入战斗，否则新版准备界面可能没有可识别的退出按钮。
         if not config.lock_team_enable and not exit_four:
             # 点击准备按钮
             self.wait_until_appear(self.I_PREPARE_HIGHLIGHT)
@@ -94,6 +95,21 @@ class GeneralBattle(GeneralBuff, GeneralBattleAssets):
                 if not (self.appear(self.I_PRESET) or self.appear(self.I_PRESET_WIT_NUMBER)):
                     break
             logger.info(f"Click {self.I_PREPARE_HIGHLIGHT.name}")
+        elif exit_four:
+            prepare_timer = Timer(8).start()
+            while not prepare_timer.reached():
+                self.screenshot()
+                if self.appear(self.I_EXIT):
+                    break
+                if self.appear_then_click(self.I_PREPARE_HIGHLIGHT, interval=0.8):
+                    continue
+                if self.appear_then_click(self.I_PREPARE_DARK, interval=0.8):
+                    continue
+                if self.ocr_appear(self.O_BATTLE_PREPARE):
+                    self.click(self.O_BATTLE_PREPARE, interval=0.8)
+                    continue
+                sleep(random.uniform(0.3, 0.6))
+            logger.info("Exit-four prepare handled")
 
         # 点击返回
         while 1:

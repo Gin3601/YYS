@@ -4,6 +4,7 @@ interface Props {
   scriptName: string | null
   backendOnline: boolean | null
   status: OasStatus
+  startLabel?: string
   onStart: () => void
   onStop: () => void
   onRefresh: () => void
@@ -12,7 +13,7 @@ interface Props {
 
 export function ControlPanel(props: Props) {
   const {
-    scriptName, backendOnline, status,
+    scriptName, backendOnline, status, startLabel = '启动脚本',
     onStart, onStop, onRefresh, onReconnectWs,
   } = props
 
@@ -55,7 +56,7 @@ export function ControlPanel(props: Props) {
           className="btn primary"
           disabled={!canControl}
           onClick={onStart}
-        >启动探索28</button>
+        >{startLabel}</button>
         <button
           type="button"
           className="btn danger"
