@@ -16,14 +16,14 @@ export function BackendStatus({ online, baseUrl }: Props) {
     return (
       <span title={baseUrl}>
         <span className="dot success" />
-        后端已连接 <span style={{ color: 'var(--text-dim)' }}>({baseUrl})</span>
+        式神在线 <span style={{ color: 'var(--text-mute)', fontSize: 12 }}>({baseUrl})</span>
       </span>
     )
   }
   return (
     <span title={baseUrl}>
       <span className="dot error" />
-      未检测到 OAS 后端，请先启动 <code>python server.py</code>
+      式神未至 · 请先启动 <code>python server.py</code>
     </span>
   )
 }

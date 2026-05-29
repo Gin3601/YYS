@@ -155,6 +155,74 @@ async def script_task(script_name: str, task: str, group: str, argument: str, ty
     return mm.config_cache(script_name).model.script_set_arg(task, group, argument, value)
 
 
+# 批量写入端点 —— 让前端一次性应用预设而不是发 N 个 PUT
+# Body 是 list[ {group, argument, value, types} ]
+# 返回 list[ {group, argument, ok, error?} ]，顺序与请求一致
+# 单条失败不影响其他条；最终是否全成功由前端汇总。
+@script_app.put('/{script_name}/{task}/batch')
+async def script_task_batch(script_name: str, task: str, items: list[dict]):
+    if not isinstance(items, list):
+        raise HTTPException(status_code=400, detail='Body must be a JSON list')
+
+    results: list[dict] = []
+    model = mm.config_cache(script_name).model
+
+    for idx, item in enumerate(items):
+        group = item.get('group')
+        argument = item.get('argument')
+        raw_value = item.get('value')
+        types = item.get('types')
+        if not group or not argument or not types:
+            results.append({
+                'group': group, 'argument': argument, 'ok': False,
+                'error': f'item[{idx}] missing group/argument/types',
+            })
+            continue
+
+        try:
+            match types:
+                case 'integer':
+                    value = int(raw_value)
+                case 'number':
+                    value = float(raw_value)
+                case 'boolean':
+                    if isinstance(raw_value, str):
+                        v = raw_value.lower()
+                        value = v in ('true', '1')
+                    else:
+                        value = bool(raw_value)
+                case 'string':
+                    value = raw_value
+                case 'date_time':
+                    value = datetime.strptime(raw_value, '%Y-%m-%d %H:%M:%S')
+                case 'time_delta':
+                    day = int(raw_value[1])
+                    date_time = datetime.strptime(raw_value[3:], '%H:%M:%S')
+                    value = TimeDelta(days=day, hours=date_time.hour,
+                                      minutes=date_time.minute, seconds=date_time.second)
+                case 'time':
+                    value = datetime.strptime(raw_value, '%H:%M:%S').time()
+                case _:
+                    value = raw_value
+        except Exception as e:
+            results.append({
+                'group': group, 'argument': argument, 'ok': False,
+                'error': f'type-coerce: {e}',
+            })
+            continue
+
+        try:
+            ok = model.script_set_arg(task, group, argument, value)
+            results.append({'group': group, 'argument': argument, 'ok': bool(ok)})
+        except Exception as e:
+            results.append({
+                'group': group, 'argument': argument, 'ok': False,
+                'error': f'set-arg: {e}',
+            })
+
+    return results
+
+
 @script_app.put('/{script_name}/{task}/sync_next_run')
 async def sync_next_run(script_name: str, task: str, target_dt: str):
     if script_name not in mm.script_process:

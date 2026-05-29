@@ -13,14 +13,18 @@ export function Header(props: Props) {
 
   return (
     <header className="header">
-      <h1>OAS 探索28 Lite 控制台</h1>
+      <h1>
+        <span className="torii">⛩</span>
+        阴阳寮 · 自动化控制盘
+        <span className="sub">OAS Console</span>
+      </h1>
       <div className="header-row">
         <BackendStatus online={backendOnline} baseUrl={baseUrl} />
         <span className="config-select">
           <span>当前配置：</span>
           {configList.length === 0 ? (
             <span style={{ color: 'var(--text-dim)' }}>
-              {backendOnline === false ? '后端离线' : '加载中…'}
+              {backendOnline === false ? '式神未至' : '加载中…'}
             </span>
           ) : (
             <select
